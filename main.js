@@ -17,13 +17,11 @@ const client = new pg.Pool(config);
 
 // Modelo
 class UsuariosModel {
-  constructor() {
-    this.todos = [];
-  }
+  constructor() {}
 
   async getUsuarios() {
-    const res = await client.query("select * from usuarios;");
-    console.log(res);
+    const res = await client.query("select * from usuarios order by id asc;");
+    //  console.log(res);
     return res.rows;
   }
 
@@ -32,27 +30,30 @@ class UsuariosModel {
       "INSERT INTO usuarios(nombreCompleto, edad) VALUES($1, $2) RETURNING *;";
     const values = [nombreCompleto, edad];
     const res = await client.query(query, values);
-    return res.rows;
+    return res.rows[0];
   }
 
   async promedioEdad() {
     const res = await client.query(
       "select sum(u.edad)/count(u.edad) as promedioedad from usuarios u;"
     );
-    console.log(res);
+    //  console.log(res);
     return res.rows[0].promedioedad;
   }
 
-  editTodo(index, todoText) {
-    this.todos[index].text = todoText;
+  async editUsuario(index, nombreCompleto, edad) {
+    const query =
+      "UPDATE usuarios SET nombrecompleto=$1, edad=$2 WHERE id=$3 RETURNING *;";
+    const values = [nombreCompleto, edad, index];
+    const res = await client.query(query, values);
+    //console.log(res);
+    return res.rows[0];
   }
 
-  deleteTodo(index) {
-    this.todos.splice(index, 1);
-  }
-
-  toggleTodo(index) {
-    this.todos[index].completed = !this.todos[index].completed;
+  async deleteUsuario(index) {
+    const query = "DELETE FROM usuarios WHERE id=$1;";
+    const values = [index];
+    await client.query(query, values);
   }
 }
 
@@ -74,16 +75,12 @@ class UsuariosController {
     return await this.model.promedioEdad();
   }
 
-  editTodo(index, todoText) {
-    this.model.editTodo(index, todoText);
+  async editUsuario(index, nombreCompleto, edad) {
+    return await this.model.editUsuario(index, nombreCompleto, edad);
   }
 
-  deleteTodo(index) {
-    this.model.deleteTodo(index);
-  }
-
-  toggleTodo(index) {
-    this.model.toggleTodo(index);
+  deleteUsuario(index) {
+    this.model.deleteUsuario(index);
   }
 }
 
@@ -95,11 +92,14 @@ const usuariosController = new UsuariosController(usuariosModel);
 app.use(bodyParser.json());
 
 app.get("/usuarios", async (req, res) => {
+  console.log("Obtencion de usuarios:");
   const response = await usuariosController.getUsuarios();
+  console.log("response: ", response);
   res.json(response);
 });
 
 app.post("/usuarios", async (req, res) => {
+  console.log("Creacion de usuario:");
   let nombreCompleto = req.body.nombreCompleto;
   let edad = req.body.edad;
   if (nombreCompleto != null && edad != null) {
@@ -113,12 +113,14 @@ app.post("/usuarios", async (req, res) => {
 });
 
 app.get("/usuarios/promedio-edad", async (req, res) => {
+  console.log("Promedio de edad:");
   const response = await usuariosController.promedioEdad();
   console.log("response: ", response);
   res.json({ promedioEdad: response });
 });
 
 app.get("/status", async (req, res) => {
+  console.log("Estado del servicio:");
   res.json({
     nameSystem: pjson.name,
     version: pjson.version,
@@ -127,23 +129,38 @@ app.get("/status", async (req, res) => {
   });
 });
 
-app.put("/todos/:index", (req, res) => {
+app.put("/usuarios/:index", async (req, res) => {
+  console.log("Modificacion de usuario:");
   const index = req.params.index;
-  const todoText = req.body.text;
-  usuariosController.editTodo(index, todoText);
-  res.sendStatus(200);
+  if (index != null) {
+    let nombreCompleto = req.body.nombreCompleto;
+    let edad = req.body.edad;
+    if (nombreCompleto != null && edad != null) {
+      console.log("request: ", req.body);
+      const response = await usuariosController.editUsuario(
+        index,
+        nombreCompleto,
+        edad
+      );
+      console.log("response: ", response);
+      res.json(response);
+    } else {
+      res.sendStatus(400);
+    }
+  } else {
+    res.sendStatus(400);
+  }
 });
 
-app.delete("/todos/:index", (req, res) => {
+app.delete("/usuarios/:index", (req, res) => {
+  console.log("Eliminacion de usuario:");
   const index = req.params.index;
-  usuariosController.deleteTodo(index);
-  res.sendStatus(200);
-});
-
-app.patch("/todos/:index", (req, res) => {
-  const index = req.params.index;
-  usuariosController.toggleTodo(index);
-  res.sendStatus(200);
+  if (index != null) {
+    usuariosController.deleteUsuario(index);
+    res.sendStatus(200);
+  } else {
+    res.sendStatus(400);
+  }
 });
 
 app.listen(3000, () => {
